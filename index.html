@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" xmlns:mso="urn:schemas-microsoft-com:office:office" xmlns:msdt="uuid:C2F41010-65B3-11d1-A29F-00AA00C14882">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CHIKV Mutation Spotter</title>
+    <title>CHIKV-ECSA Mutation Spotter</title>
     <style>
         * {
             margin: 0;
@@ -252,7 +252,7 @@
             font-family: 'Courier New', monospace;
         }
 
-        .error-message {
+        .error-message, .warning-message {
             background: #4f5670;
             color: #ff8a8a;
             padding: 16px;
@@ -261,6 +261,11 @@
             margin: 12px 0;
             font-size: 12px;
             border: 1px solid #475569;
+        }
+        
+        .warning-message {
+            border-left-color: #ffaa00;
+            color: #fff0c0;
         }
 
         .info-bar {
@@ -338,12 +343,19 @@
             opacity: 0.8;
         }
     </style>
+
+<!--[if gte mso 9]><xml>
+<mso:CustomDocumentProperties>
+<mso:MediaServiceImageTags msdt:dt="string"></mso:MediaServiceImageTags>
+<mso:lcf76f155ced4ddcb4097134ff3c332f msdt:dt="string"></mso:lcf76f155ced4ddcb4097134ff3c332f>
+</mso:CustomDocumentProperties>
+</xml><![endif]-->
 </head>
 <body>
     <div class="container">
         <div class="header">
             <div class="title">
-                CHIKV Mutation Spotter
+                CHIKV-ECSA Mutation Spotter
             </div>
             <div class="subtitle">Reference Genome: NC_004162.2</div>
         </div>
@@ -351,7 +363,9 @@
             <input type="text" class="input-field" id="mutationInput" placeholder="E1-A226V">
         </div>
         <div class="examples">
-            <span class="example-tag" onclick="setExample('E1-A226V')">E1-A226V</span>
+			<span class="example-tag" onclick="setExample('E2-V264A')">E2-V264A</span>
+			<span class="example-tag" onclick="setExample('E1-A226V')">E1-A226V</span>
+            <span class="example-tag" onclick="setExample('E1-K211E')">E1-K211E</span>
         </div>
         <button class="btn" onclick="searchMutation()">Run</button>
 		<div class="results" id="results" style="display: none;">
@@ -410,9 +424,9 @@
             
             return {
                 gene: matches[1],
-                refAA: matches[2],
+                refAA: matches[2].toUpperCase(),
                 position: parseInt(matches[3]),
-                newAA: matches[4]
+                newAA: matches[4].toUpperCase()
             };
         }
 
@@ -436,85 +450,96 @@
             };
         }
 
-		function searchMutation() {
-			document.getElementById('results').style.display = 'block';
-			const input = document.getElementById('mutationInput').value.trim();
-			const resultContent = document.getElementById('resultContent');
+        function searchMutation() {
+            document.getElementById('results').style.display = 'block';
+            const input = document.getElementById('mutationInput').value.trim();
+            const resultContent = document.getElementById('resultContent');
 
-			if (!input) {
-				resultContent.innerHTML = '<div class="error-message">Please enter a mutation in Gene-Code (e.g., E1-A226V)</div>';
-				return;
-			}
+            if (!input) {
+                resultContent.innerHTML = '<div class="error-message">Please enter a mutation in Gene-Code (e.g., E1-A226V)</div>';
+                return;
+            }
 
-			if (!validateMutationFormat(input)) {
-				resultContent.innerHTML = '<div class="error-message">Please enter a mutation in Gene-Code (e.g., E1-A226V)</div>';
-				return;
-			}
+            if (!validateMutationFormat(input)) {
+                resultContent.innerHTML = '<div class="error-message">Please enter a mutation in Gene-Code (e.g., E1-A226V)</div>';
+                return;
+            }
 
-			const parsed = parseMutation(input);
-			if (!parsed) {
-				resultContent.innerHTML = '<div class="error-message">Please enter a mutation in Gene-Code (e.g., E1-A226V)</div>';
-				return;
-			}
+            const parsed = parseMutation(input);
+            if (!parsed) {
+                resultContent.innerHTML = '<div class="error-message">Please enter a mutation in Gene-Code (e.g., E1-A226V)</div>';
+                return;
+            }
 
-			const sequence = geneAA[parsed.gene];
-			if (!sequence) {
-				resultContent.innerHTML = '<div class="error-message">Please enter a mutation in Gene-Code (e.g., E1-A226V)</div>';
-				return;
-			}
+            const sequence = geneAA[parsed.gene];
+            if (!sequence) {
+                resultContent.innerHTML = '<div class="error-message">Please enter a mutation in Gene-Code (e.g., E1-A226V)</div>';
+                return;
+            }
 
-			const pos = parsed.position - 1;
-			if (pos < 0 || pos >= sequence.length) {
-				resultContent.innerHTML = '<div class="error-message">Please enter a mutation in Gene-Code (e.g., E1-A226V)</div>';
-				return;
-			}
+            const pos = parsed.position - 1;
+            if (pos < 0 || pos >= sequence.length) {
+                resultContent.innerHTML = '<div class="error-message">Please enter a mutation in Gene-Code (e.g., E1-A226V)</div>';
+                return;
+            }
 
-			const geneStart = findGeneStartInGenome(parsed.gene);
-			const ntPositionInGene = pos * 3;
-			let genomePosition = geneStart + ntPositionInGene + 1;
+            const actualRefAA = sequence[pos];
+            if (parsed.refAA !== actualRefAA) {
+                resultContent.innerHTML = `
+                    <div class="warning-message">
+                        The mutation <strong>${input}</strong> does NOT match with the CHIKV-ECSA reference genome.<br><br>
+                        The expected amino acid at position ${parsed.position} is <strong>${actualRefAA} (${aaMap[actualRefAA] || '?'}),</strong> but you provided <strong>${parsed.refAA} (${aaMap[parsed.refAA] || '?'})</strong>.
+                    </div>
+                `;
+                return;
+            }
 
-			const context = getContextSequence(sequence, pos, 15);
-			
-			let highlightedSeq = '';
-			for (let i = 0; i < context.context.length; i++) {
-				if (i === context.highlightPos) {
-					highlightedSeq += `<span class="highlight">${context.context[i]}</span>`;
-				} else {
-					highlightedSeq += context.context[i];
-				}
-			}
+            const geneStart = findGeneStartInGenome(parsed.gene);
+            const ntPositionInGene = pos * 3;
+            let genomePosition = geneStart + ntPositionInGene + 1;
 
-			const result = `
-				<div class="position-card">
-					<div class="mutation-badge" style="margin-bottom: 12px; text-align: center;">${input}</div>
-					
-					<div class="position-number">
-						<span>${genomePosition}, ${genomePosition + 1}, ${genomePosition + 2}</span>
-					</div>
-					
-					<div class="mutation-detail">
-						<div class="detail-item">
-							<div class="detail-label">Gene</div>
-							<div class="detail-value">${parsed.gene}</div>
-						</div>
-						<div class="detail-item">
-							<div class="detail-label">Position</div>
-							<div class="detail-value">${parsed.position}</div>
-						</div>
-						<div class="detail-item">
-							<div class="detail-label">Ref</div>
-							<div class="detail-value">${aaMap[parsed.refAA] || '?'}</div>
-						</div>
-						<div class="detail-item">
-							<div class="detail-label">Alt</div>
-							<div class="detail-value">${aaMap[parsed.newAA] || '?'}</div>
-						</div>
-					</div>
-				</div>
-			`;
+            const context = getContextSequence(sequence, pos, 15);
+            
+            let highlightedSeq = '';
+            for (let i = 0; i < context.context.length; i++) {
+                if (i === context.highlightPos) {
+                    highlightedSeq += `<span class="highlight">${context.context[i]}</span>`;
+                } else {
+                    highlightedSeq += context.context[i];
+                }
+            }
 
-			resultContent.innerHTML = result;
-		}
+            const result = `
+                <div class="position-card">
+                    <div class="mutation-badge" style="margin-bottom: 12px; text-align: center;">${input}</div>
+                    
+                    <div class="position-number">
+                        <span>${genomePosition}, ${genomePosition + 1}, ${genomePosition + 2}</span>
+                    </div>
+                    
+                    <div class="mutation-detail">
+                        <div class="detail-item">
+                            <div class="detail-label">Gene</div>
+                            <div class="detail-value">${parsed.gene}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Position</div>
+                            <div class="detail-value">${parsed.position}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Ref</div>
+                            <div class="detail-value">${aaMap[parsed.refAA] || '?'}</div>
+                        </div>
+                        <div class="detail-item">
+                            <div class="detail-label">Alt</div>
+                            <div class="detail-value">${aaMap[parsed.newAA] || '?'}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            resultContent.innerHTML = result;
+        }
 
         document.getElementById('mutationInput').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') searchMutation();
